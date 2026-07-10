@@ -99,7 +99,7 @@ func TestJSONOutputIsStableAndStructured(t *testing.T) {
 			},
 		},
 		{
-			name:  "comparison",
+			name: "comparison",
 			write: func(w io.Writer) error {
 				return output.WriteComparisonJSON(w, []scheduler.PolicyResult{strictPolicy, policy})
 			},

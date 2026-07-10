@@ -84,18 +84,18 @@ func TestRunRejectsInvalidArguments(t *testing.T) {
 		{name: "schedule cluster required", args: []string{"schedule"}, wantErr: "--cluster is required"},
 		{name: "compare jobs required", args: []string{"compare", "--cluster", "cluster.yaml"}, wantErr: "--jobs is required"},
 		{
-			name: "unsupported policy",
-			args: []string{"schedule", "--cluster", "cluster.yaml", "--jobs", "jobs.yaml", "--policy", "largest-first"},
+			name:    "unsupported policy",
+			args:    []string{"schedule", "--cluster", "cluster.yaml", "--jobs", "jobs.yaml", "--policy", "largest-first"},
 			wantErr: `unsupported policy "largest-first"`,
 		},
 		{
-			name: "unsupported schedule output",
-			args: []string{"schedule", "--cluster", "cluster.yaml", "--jobs", "jobs.yaml", "--output", "yaml"},
+			name:    "unsupported schedule output",
+			args:    []string{"schedule", "--cluster", "cluster.yaml", "--jobs", "jobs.yaml", "--output", "yaml"},
 			wantErr: `unsupported output "yaml"`,
 		},
 		{
-			name: "unsupported compare output",
-			args: []string{"compare", "--cluster", "cluster.yaml", "--jobs", "jobs.yaml", "--output", "yaml"},
+			name:    "unsupported compare output",
+			args:    []string{"compare", "--cluster", "cluster.yaml", "--jobs", "jobs.yaml", "--output", "yaml"},
 			wantErr: `unsupported output "yaml"`,
 		},
 		{name: "unknown command", args: []string{"admit"}, wantErr: `unknown command "admit"`},
@@ -168,5 +168,5 @@ func readREADMEExample(t *testing.T) string {
 	if end == -1 {
 		t.Fatal("README comparison example closing fence not found")
 	}
-	return string(contents[start:start+end]) + "\n"
+	return string(contents[start : start+end]) + "\n"
 }
