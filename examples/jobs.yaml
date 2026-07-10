@@ -1,0 +1,19 @@
+jobs:
+  - name: warmup
+    replicas: 4
+    resourcesPerReplica:
+      cpu: 4
+      gpu: 1
+    requiredTopology: rack
+  - name: train-xl
+    replicas: 10
+    resourcesPerReplica:
+      cpu: 4
+      gpu: 1
+    requiredTopology: rack
+  - name: batch
+    replicas: 4
+    resourcesPerReplica:
+      cpu: 4
+      gpu: 1
+    requiredTopology: rack

@@ -1,0 +1,29 @@
+nodes:
+  - name: node-a1
+    topology:
+      zone: zone-a
+      rack: rack-a
+    capacity:
+      cpu: 32
+      gpu: 4
+  - name: node-a2
+    topology:
+      zone: zone-a
+      rack: rack-a
+    capacity:
+      cpu: 32
+      gpu: 4
+  - name: node-b1
+    topology:
+      zone: zone-a
+      rack: rack-b
+    capacity:
+      cpu: 32
+      gpu: 4
+  - name: node-b2
+    topology:
+      zone: zone-a
+      rack: rack-b
+    capacity:
+      cpu: 32
+      gpu: 4
