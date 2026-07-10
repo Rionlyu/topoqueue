@@ -168,5 +168,5 @@ func readREADMEExample(t *testing.T) string {
 	if end == -1 {
 		t.Fatal("README comparison example closing fence not found")
 	}
-	return string(contents[start : start+end]) + "\n"
+	return string(contents[start:start+end]) + "\n"
 }
