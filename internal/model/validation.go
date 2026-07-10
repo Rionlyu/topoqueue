@@ -73,7 +73,7 @@ func ValidateJobs(jobSet JobSet) error {
 }
 
 // ValidateTopologyRequirements verifies that every node has every topology key
-// required by the jobs. It should be called after loading both input files.
+// required by the jobs.
 func ValidateTopologyRequirements(cluster Cluster, jobSet JobSet) error {
 	requiredBy := make(map[string][]string)
 	for _, job := range jobSet.Jobs {
