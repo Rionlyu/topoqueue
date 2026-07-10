@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/topoqueue/internal/model"
+	"github.com/Rionlyu/topoqueue/internal/model"
 )
 
 func TestLoadCluster(t *testing.T) {

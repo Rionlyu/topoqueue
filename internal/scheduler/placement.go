@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/example/topoqueue/internal/model"
+	"github.com/Rionlyu/topoqueue/internal/model"
 )
 
 type placementResult struct {

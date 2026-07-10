@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/example/topoqueue/internal/model"
+	"github.com/Rionlyu/topoqueue/internal/model"
 )
 
 // Policy names a supported queue policy.

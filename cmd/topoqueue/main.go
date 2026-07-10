@@ -10,9 +10,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/example/topoqueue/internal/model"
-	"github.com/example/topoqueue/internal/output"
-	"github.com/example/topoqueue/internal/scheduler"
+	"github.com/Rionlyu/topoqueue/internal/model"
+	"github.com/Rionlyu/topoqueue/internal/output"
+	"github.com/Rionlyu/topoqueue/internal/scheduler"
 )
 
 const (

@@ -19,9 +19,7 @@ topology constraints affect accelerator-job admission.
 
 ## Module path
 
-This repository had no existing Git remote when it was created, so its module
-path is `github.com/example/topoqueue`. Replace that placeholder in `go.mod`
-and imports with the repository's final GitHub owner before publishing it.
+The Go module path is `github.com/Rionlyu/topoqueue`.
 
 ## Quick start
 

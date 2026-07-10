@@ -6,7 +6,7 @@ import (
 	"io"
 	"sort"
 
-	"github.com/example/topoqueue/internal/scheduler"
+	"github.com/Rionlyu/topoqueue/internal/scheduler"
 )
 
 // ComparisonJSON is the stable top-level JSON representation of a comparison.

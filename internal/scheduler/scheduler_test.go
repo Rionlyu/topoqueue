@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/topoqueue/internal/model"
-	"github.com/example/topoqueue/internal/scheduler"
+	"github.com/Rionlyu/topoqueue/internal/model"
+	"github.com/Rionlyu/topoqueue/internal/scheduler"
 )
 
 func TestSchedulePlacementOutcomes(t *testing.T) {

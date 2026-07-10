@@ -1,4 +1,4 @@
-module github.com/example/topoqueue
+module github.com/Rionlyu/topoqueue
 
 go 1.25
 

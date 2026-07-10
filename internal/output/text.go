@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/example/topoqueue/internal/scheduler"
+	"github.com/Rionlyu/topoqueue/internal/scheduler"
 )
 
 // WritePolicyText writes one policy result in a compact human-readable form.
