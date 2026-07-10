@@ -1,8 +1,7 @@
 // Package model defines TopoQueue's input data model.
 package model
 
-// Resources is a CPU and GPU quantity. Both values are whole, non-negative
-// units in valid input.
+// Resources holds CPU and GPU quantities.
 type Resources struct {
 	CPU int64 `yaml:"cpu" json:"cpu"`
 	GPU int64 `yaml:"gpu" json:"gpu"`

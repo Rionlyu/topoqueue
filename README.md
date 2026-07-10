@@ -1,5 +1,7 @@
 # TopoQueue
 
+[![CI](https://github.com/Rionlyu/topoqueue/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Rionlyu/topoqueue/actions/workflows/ci.yml)
+
 TopoQueue is a deterministic Go CLI for exploring how queue policy and
 topology constraints affect accelerator-job admission.
 
@@ -17,13 +19,30 @@ topology constraints affect accelerator-job admission.
 - Concurrent comparison of policies with isolated mutable scheduling state.
 - Strict YAML decoding that rejects unknown fields.
 
-## Module path
-
-The Go module path is `github.com/Rionlyu/topoqueue`.
-
-## Quick start
+## Installation
 
 TopoQueue requires Go 1.25 or newer.
+
+Install with Go:
+
+```sh
+go install github.com/Rionlyu/topoqueue/cmd/topoqueue@latest
+topoqueue --help
+```
+
+`go install` writes the binary to `GOBIN`, or to `$(go env GOPATH)/bin` when
+`GOBIN` is unset. Ensure that directory is on `PATH`.
+
+To build from a repository checkout instead:
+
+```sh
+git clone https://github.com/Rionlyu/topoqueue.git
+cd topoqueue
+make build
+./bin/topoqueue --help
+```
+
+## Quick start
 
 Build the CLI and run the included comparison:
 
@@ -113,12 +132,12 @@ Policy comparison performs two independent runs with the same per-run bounds.
 ## Development
 
 ```sh
-make fmt-check   # verify gofmt output
-make vet         # run go vet ./...
-make test        # run tests with the race detector
-make build       # build bin/topoqueue
-make demo        # run the checked-in comparison
-make benchmark   # run the deterministic scheduler benchmark
+make fmt-check
+make vet
+make test
+make build
+make demo
+make benchmark
 ```
 
 ## Project structure
