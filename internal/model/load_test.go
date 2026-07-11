@@ -35,6 +35,26 @@ func TestLoadCluster(t *testing.T) {
 			}}},
 		},
 		{
+			name:     "explicit empty sequence",
+			contents: "nodes: []\n",
+			want:     model.Cluster{Nodes: []model.Node{}},
+		},
+		{
+			name:        "missing nodes field",
+			contents:    "{}\n",
+			wantErrText: `top-level field "nodes" is required and must be a sequence`,
+		},
+		{
+			name:        "null document",
+			contents:    "null\n",
+			wantErrText: `top-level field "nodes" is required and must be a sequence`,
+		},
+		{
+			name:        "null nodes field",
+			contents:    "nodes: null\n",
+			wantErrText: `top-level field "nodes" is required and must be a sequence`,
+		},
+		{
 			name: "unknown root field",
 			contents: `nodes: []
 version: 1
@@ -134,6 +154,26 @@ func TestLoadJobs(t *testing.T) {
 				{Name: "first", Replicas: 2, ResourcesPerReplica: model.Resources{CPU: 1}},
 				{Name: "second", Replicas: 1, ResourcesPerReplica: model.Resources{GPU: 1}, RequiredTopology: "rack"},
 			}},
+		},
+		{
+			name:     "explicit empty sequence",
+			contents: "jobs: []\n",
+			want:     model.JobSet{Jobs: []model.Job{}},
+		},
+		{
+			name:        "missing jobs field",
+			contents:    "{}\n",
+			wantErrText: `top-level field "jobs" is required and must be a sequence`,
+		},
+		{
+			name:        "null document",
+			contents:    "null\n",
+			wantErrText: `top-level field "jobs" is required and must be a sequence`,
+		},
+		{
+			name:        "null jobs field",
+			contents:    "jobs: null\n",
+			wantErrText: `top-level field "jobs" is required and must be a sequence`,
 		},
 		{
 			name: "unknown job field",
