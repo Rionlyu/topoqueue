@@ -16,6 +16,9 @@ func LoadCluster(path string) (Cluster, error) {
 	if err := loadYAML(path, "cluster", &cluster); err != nil {
 		return Cluster{}, err
 	}
+	if cluster.Nodes == nil {
+		return Cluster{}, fmt.Errorf("validate cluster file %q: top-level field %q is required and must be a sequence", path, "nodes")
+	}
 	if err := ValidateCluster(cluster); err != nil {
 		return Cluster{}, fmt.Errorf("validate cluster file %q: %w", path, err)
 	}
@@ -27,6 +30,9 @@ func LoadJobs(path string) (JobSet, error) {
 	var jobs JobSet
 	if err := loadYAML(path, "jobs", &jobs); err != nil {
 		return JobSet{}, err
+	}
+	if jobs.Jobs == nil {
+		return JobSet{}, fmt.Errorf("validate jobs file %q: top-level field %q is required and must be a sequence", path, "jobs")
 	}
 	if err := ValidateJobs(jobs); err != nil {
 		return JobSet{}, fmt.Errorf("validate jobs file %q: %w", path, err)
