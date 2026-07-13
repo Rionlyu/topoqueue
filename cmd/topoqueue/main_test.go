@@ -72,6 +72,32 @@ func TestRunExamples(t *testing.T) {
 			t.Errorf("unexpected ordered job decisions: %#v", got.Jobs)
 		}
 	})
+
+	t.Run("simulate example JSON", func(t *testing.T) {
+		t.Parallel()
+		timedJobsPath := filepath.Join("..", "..", "examples", "timed-jobs.yaml")
+		stdout, stderr, err := execute(t, []string{
+			"simulate", "--cluster", clusterPath, "--jobs", timedJobsPath,
+			"--policy", "all", "--output", "json",
+		})
+		if err != nil {
+			t.Fatalf("run() error = %v; stderr = %s", err, stderr)
+		}
+		var comparison output.SimulationComparisonJSON
+		if err := json.Unmarshal([]byte(stdout), &comparison); err != nil {
+			t.Fatalf("decode simulation comparison JSON: %v\n%s", err, stdout)
+		}
+		if len(comparison.Policies) != 2 {
+			t.Fatalf("policy count = %d, want 2", len(comparison.Policies))
+		}
+		backfill, strict := comparison.Policies[0], comparison.Policies[1]
+		if backfill.Policy != scheduler.PolicyBackfill || backfill.MakespanTicks != 12 || backfill.TotalQueueDelayTicks != 7 || backfill.MaximumQueueDelayTicks != 7 {
+			t.Errorf("backfill example summary = %#v", backfill)
+		}
+		if strict.Policy != scheduler.PolicyStrictFIFO || strict.MakespanTicks != 14 || strict.TotalQueueDelayTicks != 17 || strict.MaximumQueueDelayTicks != 10 {
+			t.Errorf("strict example summary = %#v", strict)
+		}
+	})
 }
 
 func TestRunRejectsInvalidArguments(t *testing.T) {

@@ -1,0 +1,27 @@
+jobs:
+  - name: warmup
+    arrivalTick: 0
+    durationTicks: 8
+    replicas: 8
+    resourcesPerReplica:
+      cpu: 4
+      gpu: 1
+    requiredTopology: zone
+
+  - name: train-xl
+    arrivalTick: 1
+    durationTicks: 4
+    replicas: 16
+    resourcesPerReplica:
+      cpu: 4
+      gpu: 1
+    requiredTopology: zone
+
+  - name: batch
+    arrivalTick: 2
+    durationTicks: 2
+    replicas: 4
+    resourcesPerReplica:
+      cpu: 4
+      gpu: 1
+    requiredTopology: rack
