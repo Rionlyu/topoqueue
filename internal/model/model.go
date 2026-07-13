@@ -24,6 +24,20 @@ type JobSet struct {
 	Jobs []Job `yaml:"jobs" json:"jobs"`
 }
 
+// TimedJob describes a job together with its logical arrival and execution
+// duration. Job is embedded so timed workload files retain the static job
+// shape while using a separate loader and model.
+type TimedJob struct {
+	Job           `yaml:",inline"`
+	ArrivalTick   int64 `yaml:"arrivalTick" json:"arrivalTick"`
+	DurationTicks int64 `yaml:"durationTicks" json:"durationTicks"`
+}
+
+// TimedJobSet preserves the input order from a timed jobs file.
+type TimedJobSet struct {
+	Jobs []TimedJob `yaml:"jobs" json:"jobs"`
+}
+
 // Job describes a set of identical replicas that must share a topology
 // domain when RequiredTopology is set.
 type Job struct {
@@ -53,4 +67,20 @@ func (j JobSet) Clone() JobSet {
 	clone := JobSet{Jobs: make([]Job, len(j.Jobs))}
 	copy(clone.Jobs, j.Jobs)
 	return clone
+}
+
+// Clone returns a deep copy of the timed job set.
+func (j TimedJobSet) Clone() TimedJobSet {
+	clone := TimedJobSet{Jobs: make([]TimedJob, len(j.Jobs))}
+	copy(clone.Jobs, j.Jobs)
+	return clone
+}
+
+// StaticJobs returns a copy of the timed jobs without lifecycle timing.
+func (j TimedJobSet) StaticJobs() JobSet {
+	jobs := JobSet{Jobs: make([]Job, len(j.Jobs))}
+	for index, timedJob := range j.Jobs {
+		jobs.Jobs[index] = timedJob.Job
+	}
+	return jobs
 }

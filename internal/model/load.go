@@ -40,6 +40,54 @@ func LoadJobs(path string) (JobSet, error) {
 	return jobs, nil
 }
 
+// LoadTimedJobs reads, strictly decodes, and validates a timed jobs YAML file.
+func LoadTimedJobs(path string) (TimedJobSet, error) {
+	var document timedJobDocument
+	if err := loadYAML(path, "timed jobs", &document); err != nil {
+		return TimedJobSet{}, err
+	}
+	if document.Jobs == nil {
+		return TimedJobSet{}, fmt.Errorf("validate timed jobs file %q: top-level field %q is required and must be a sequence", path, "jobs")
+	}
+
+	jobs := TimedJobSet{Jobs: make([]TimedJob, len(document.Jobs))}
+	for index, input := range document.Jobs {
+		if input.ArrivalTick == nil {
+			return TimedJobSet{}, fmt.Errorf("validate timed jobs file %q: %s: arrivalTick is required", path, jobDescription(input.Job, index))
+		}
+		if input.DurationTicks == nil {
+			return TimedJobSet{}, fmt.Errorf("validate timed jobs file %q: %s: durationTicks is required", path, jobDescription(input.Job, index))
+		}
+		jobs.Jobs[index] = TimedJob{
+			Job:           input.Job,
+			ArrivalTick:   *input.ArrivalTick,
+			DurationTicks: *input.DurationTicks,
+		}
+	}
+
+	if err := ValidateTimedJobs(jobs); err != nil {
+		return TimedJobSet{}, fmt.Errorf("validate timed jobs file %q: %w", path, err)
+	}
+	return jobs, nil
+}
+
+type timedJobDocument struct {
+	Jobs []timedJobInput `yaml:"jobs"`
+}
+
+type timedJobInput struct {
+	Job           `yaml:",inline"`
+	ArrivalTick   *int64 `yaml:"arrivalTick"`
+	DurationTicks *int64 `yaml:"durationTicks"`
+}
+
+func jobDescription(job Job, index int) string {
+	if job.Name == "" {
+		return fmt.Sprintf("job at index %d", index)
+	}
+	return fmt.Sprintf("job %q", job.Name)
+}
+
 func loadYAML(path, kind string, destination any) error {
 	contents, err := os.ReadFile(path)
 	if err != nil {
