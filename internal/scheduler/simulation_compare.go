@@ -34,6 +34,9 @@ func CompareSimulations(ctx context.Context, cluster model.Cluster, jobs model.T
 		return nil, fmt.Errorf("compare simulations: validate topology requirements: %w", err)
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	policies := []Policy{PolicyStrictFIFO, PolicyBackfill}
 	outcomes := make(chan simulationComparisonOutcome, len(policies))
 	for _, policy := range policies {
@@ -50,6 +53,13 @@ func CompareSimulations(ctx context.Context, cluster model.Cluster, jobs model.T
 	for range policies {
 		outcome := <-outcomes
 		completed = append(completed, outcome)
+		// Backfill sorts first and therefore has deterministic error precedence.
+		// Once it fails intrinsically, the sibling cannot change the selected
+		// error and can be canceled safely. A strict-FIFO failure must not cancel
+		// a still-running backfill simulation whose error would take precedence.
+		if outcome.policy == PolicyBackfill && outcome.err != nil && !errors.Is(outcome.err, context.Canceled) {
+			cancel()
+		}
 	}
 	sort.Slice(completed, func(i, j int) bool {
 		return completed[i].policy < completed[j].policy
