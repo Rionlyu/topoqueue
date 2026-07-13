@@ -279,6 +279,36 @@ func TestRunKeepsStaticAndTimedLoadersSeparate(t *testing.T) {
 	}
 }
 
+func TestRunSimulateReportsTimedTopologyContext(t *testing.T) {
+	t.Parallel()
+
+	clusterPath := writeCLIFile(t, "cluster.yaml", `nodes:
+  - name: node-a
+    topology:
+      zone: zone-a
+    capacity: {cpu: 1, gpu: 1}
+`)
+	jobsPath := writeCLIFile(t, "timed-jobs.yaml", `jobs:
+  - name: training
+    arrivalTick: 0
+    durationTicks: 1
+    replicas: 1
+    resourcesPerReplica: {cpu: 1, gpu: 1}
+    requiredTopology: rack
+`)
+	_, _, err := execute(t, []string{
+		"simulate", "--cluster", clusterPath, "--jobs", jobsPath,
+	})
+	if err == nil {
+		t.Fatal("run() error = nil, want missing timed topology error")
+	}
+	for _, wanted := range []string{clusterPath, jobsPath, `missing topology key "rack"`, `job "training"`} {
+		if !strings.Contains(err.Error(), wanted) {
+			t.Errorf("run() error = %q, want containing %q", err, wanted)
+		}
+	}
+}
+
 func TestRunRejectsUnknownYAMLField(t *testing.T) {
 	t.Parallel()
 

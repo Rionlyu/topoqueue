@@ -200,3 +200,19 @@ func TestReleaseAllocationRejectsOverReleaseWithoutPartialMutation(t *testing.T)
 		t.Errorf("releaseAllocation() partially mutated nodes:\ngot:  %#v\nwant: %#v", nodes, before)
 	}
 }
+
+func TestTerminalizePendingChecksReleasedCapacityWithoutPendingJobs(t *testing.T) {
+	t.Parallel()
+
+	state := simulationState{
+		nodes: []nodeState{{
+			name:      "node-a",
+			capacity:  model.Resources{CPU: 4, GPU: 1},
+			remaining: model.Resources{CPU: 2, GPU: 1},
+		}},
+	}
+	err := state.terminalizePending(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "want original capacity") {
+		t.Fatalf("terminalizePending() error = %v, want unreleased-capacity invariant", err)
+	}
+}

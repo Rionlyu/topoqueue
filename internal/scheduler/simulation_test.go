@@ -2,6 +2,7 @@ package scheduler_test
 
 import (
 	"context"
+	"errors"
 	"math"
 	"reflect"
 	"strconv"
@@ -93,6 +94,13 @@ func TestSimulateTimedExamplePolicies(t *testing.T) {
 			if got := result.Jobs[0].Allocation; !reflect.DeepEqual(got, []scheduler.Allocation{{NodeName: "node-a1", Replicas: 4}, {NodeName: "node-a2", Replicas: 4}}) {
 				t.Errorf("warmup allocation = %#v", got)
 			}
+			warmupAdmission := result.Events[1]
+			if warmupAdmission.Type != scheduler.EventAdmitted || warmupAdmission.SelectedTopologyDomain != "zone-a" || !reflect.DeepEqual(
+				warmupAdmission.Allocation,
+				[]scheduler.Allocation{{NodeName: "node-a1", Replicas: 4}, {NodeName: "node-a2", Replicas: 4}},
+			) {
+				t.Errorf("warmup admission event payload = %#v", warmupAdmission)
+			}
 			if result.Jobs[2].SelectedTopologyDomain != test.wantBatchDomain {
 				t.Errorf("batch domain = %q, want %q", result.Jobs[2].SelectedTopologyDomain, test.wantBatchDomain)
 			}
@@ -120,6 +128,36 @@ func TestSimulateProcessesCompletionBeforeSameTickArrivalAndAdmission(t *testing
 		t.Fatalf("events = %#v, want %#v", got, want)
 	}
 	assertLifecycleTicks(t, result.Jobs[1], [3]int64{2, 3, 0})
+}
+
+func TestSimulateReleasesAllSameTickCompletionsBeforeAdmission(t *testing.T) {
+	t.Parallel()
+
+	cluster := model.Cluster{Nodes: []model.Node{
+		{Name: "node-a", Capacity: model.Resources{GPU: 1}},
+		{Name: "node-b", Capacity: model.Resources{GPU: 1}},
+	}}
+	jobs := model.TimedJobSet{Jobs: []model.TimedJob{
+		timedJob("first", 0, 2, 1, 0, 1, ""),
+		timedJob("second", 0, 2, 1, 0, 1, ""),
+		timedJob("whole-cluster", 1, 1, 2, 0, 1, ""),
+	}}
+	result := mustSimulate(t, cluster, jobs, scheduler.PolicyStrictFIFO)
+	wantAtTwo := []string{
+		"2 completed first",
+		"2 completed second",
+		"2 admitted whole-cluster",
+	}
+	gotEvents := eventSignatures(result.Events)
+	if got := gotEvents[5:8]; !reflect.DeepEqual(got, wantAtTwo) {
+		t.Fatalf("tick-two events = %#v, want %#v; all events: %#v", got, wantAtTwo, gotEvents)
+	}
+	if got := result.Jobs[2].Allocation; !reflect.DeepEqual(got, []scheduler.Allocation{
+		{NodeName: "node-a", Replicas: 1},
+		{NodeName: "node-b", Replicas: 1},
+	}) {
+		t.Errorf("whole-cluster allocation = %#v", got)
+	}
 }
 
 func TestSimulateOrdersArrivalsAndCompletionsDeterministically(t *testing.T) {
@@ -194,6 +232,31 @@ func TestSimulateTerminalPolicySemantics(t *testing.T) {
 	}
 }
 
+func TestSimulateRecomputesFinalReasonAfterAllResourcesAreReleased(t *testing.T) {
+	t.Parallel()
+
+	cluster := model.Cluster{Nodes: []model.Node{
+		{Name: "node-a", Topology: map[string]string{"rack": "rack-a"}, Capacity: model.Resources{GPU: 1}},
+		{Name: "node-b", Topology: map[string]string{"rack": "rack-b"}, Capacity: model.Resources{GPU: 1}},
+	}}
+	jobs := model.TimedJobSet{Jobs: []model.TimedJob{
+		timedJob("running", 0, 2, 1, 0, 1, "rack"),
+		timedJob("fragmented", 0, 1, 2, 0, 1, "rack"),
+	}}
+
+	result := mustSimulate(t, cluster, jobs, scheduler.PolicyBackfill)
+	blocked := result.Jobs[1]
+	if blocked.Status != scheduler.LifecycleUnscheduled || blocked.Reason == nil {
+		t.Fatalf("terminal lifecycle = %#v", blocked)
+	}
+	if blocked.Reason.Code != scheduler.ReasonTopologyFragmented {
+		t.Errorf("final reason = %#v, want topology fragmentation after release", blocked.Reason)
+	}
+	if blocked.Reason.TotalAvailableSlots == nil || *blocked.Reason.TotalAvailableSlots != 2 || blocked.Reason.LargestDomainSlots == nil || *blocked.Reason.LargestDomainSlots != 1 {
+		t.Errorf("final topology capacity details = %#v", blocked.Reason)
+	}
+}
+
 func TestSimulateEmptyInput(t *testing.T) {
 	t.Parallel()
 
@@ -241,6 +304,21 @@ func TestSimulateChecksFinishTickOverflowOnlyForFittingJobs(t *testing.T) {
 	}
 }
 
+func TestSimulateRejectsAggregateQueueDelayOverflow(t *testing.T) {
+	t.Parallel()
+
+	cluster := model.Cluster{Nodes: []model.Node{{Name: "node-a", Capacity: model.Resources{GPU: 2}}}}
+	jobs := model.TimedJobSet{Jobs: []model.TimedJob{
+		timedJob("blocker", 0, math.MaxInt64-1, 2, 0, 1, ""),
+		timedJob("waiter-a", 0, 1, 1, 0, 1, ""),
+		timedJob("waiter-b", 0, 1, 1, 0, 1, ""),
+	}}
+	_, err := scheduler.Simulate(context.Background(), cluster, jobs, scheduler.PolicyBackfill)
+	if err == nil || !strings.Contains(err.Error(), "total queue delay exceeds") {
+		t.Fatalf("Simulate() aggregate wait error = %v", err)
+	}
+}
+
 func TestSimulateDoesNotMutateInputsAndIsRepeatable(t *testing.T) {
 	t.Parallel()
 
@@ -269,8 +347,76 @@ func TestSimulateHonorsCanceledContext(t *testing.T) {
 	cancel()
 	cluster, jobs := timedExampleInputs()
 	_, err := scheduler.Simulate(ctx, cluster, jobs, scheduler.PolicyBackfill)
-	if err == nil || !strings.Contains(err.Error(), context.Canceled.Error()) {
+	if err == nil || !errors.Is(err, context.Canceled) {
 		t.Fatalf("Simulate() error = %v, want context canceled", err)
+	}
+}
+
+func TestSimulateHonorsCancellationDuringActiveWork(t *testing.T) {
+	t.Parallel()
+
+	cluster, jobs := timedExampleInputs()
+	ctx := &cancelAfterChecksContext{Context: context.Background(), cancelAt: 6}
+	_, err := scheduler.Simulate(ctx, cluster, jobs, scheduler.PolicyBackfill)
+	if err == nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("Simulate() error = %v after %d checks, want context canceled", err, ctx.checks)
+	}
+	if ctx.checks < ctx.cancelAt {
+		t.Errorf("context was not checked through active placement: got %d checks, want at least %d", ctx.checks, ctx.cancelAt)
+	}
+}
+
+func TestSimulateRejectsInvalidTimedInputs(t *testing.T) {
+	t.Parallel()
+
+	validCluster := model.Cluster{Nodes: []model.Node{{Name: "node-a", Capacity: model.Resources{GPU: 1}}}}
+	validJobs := model.TimedJobSet{Jobs: []model.TimedJob{
+		timedJob("work", 0, 1, 1, 0, 1, ""),
+	}}
+	tests := []struct {
+		name        string
+		cluster     model.Cluster
+		jobs        model.TimedJobSet
+		policy      scheduler.Policy
+		wantMessage string
+	}{
+		{
+			name: "negative arrival", cluster: validCluster,
+			jobs:   model.TimedJobSet{Jobs: []model.TimedJob{timedJob("work", -1, 1, 1, 0, 1, "")}},
+			policy: scheduler.PolicyBackfill, wantMessage: "arrivalTick must be non-negative",
+		},
+		{
+			name: "zero duration", cluster: validCluster,
+			jobs:   model.TimedJobSet{Jobs: []model.TimedJob{timedJob("work", 0, 0, 1, 0, 1, "")}},
+			policy: scheduler.PolicyBackfill, wantMessage: "durationTicks must be greater than zero",
+		},
+		{
+			name: "missing topology label",
+			cluster: model.Cluster{Nodes: []model.Node{{
+				Name: "node-a", Topology: map[string]string{"zone": "zone-a"}, Capacity: model.Resources{GPU: 1},
+			}}},
+			jobs:   model.TimedJobSet{Jobs: []model.TimedJob{timedJob("work", 0, 1, 1, 0, 1, "rack")}},
+			policy: scheduler.PolicyBackfill, wantMessage: `missing topology key "rack"`,
+		},
+		{
+			name: "unsupported policy", cluster: validCluster, jobs: validJobs,
+			policy: scheduler.Policy("all"), wantMessage: `unsupported policy "all"`,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := scheduler.Simulate(context.Background(), test.cluster, test.jobs, test.policy)
+			if err == nil || !strings.Contains(err.Error(), test.wantMessage) {
+				t.Fatalf("Simulate() error = %v, want containing %q", err, test.wantMessage)
+			}
+		})
+	}
+
+	if _, err := scheduler.Simulate(nil, validCluster, validJobs, scheduler.PolicyBackfill); err == nil || !strings.Contains(err.Error(), "nil context") {
+		t.Fatalf("Simulate(nil) error = %v, want nil-context error", err)
 	}
 }
 
@@ -330,4 +476,18 @@ func timedJob(name string, arrival, duration int64, replicas int, cpu, gpu int64
 		ArrivalTick:   arrival,
 		DurationTicks: duration,
 	}
+}
+
+type cancelAfterChecksContext struct {
+	context.Context
+	cancelAt int
+	checks   int
+}
+
+func (c *cancelAfterChecksContext) Err() error {
+	c.checks++
+	if c.checks >= c.cancelAt {
+		return context.Canceled
+	}
+	return c.Context.Err()
 }

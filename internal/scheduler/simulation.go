@@ -109,7 +109,13 @@ func (s *simulationState) run(ctx context.Context) (SimulationResult, error) {
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return SimulationResult{}, err
+	}
 	if err := s.terminalizePending(ctx); err != nil {
+		return SimulationResult{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return SimulationResult{}, err
 	}
 	if len(s.result.Events) > 0 {
@@ -171,6 +177,9 @@ func (s *simulationState) completeJobs(ctx context.Context, tick int64) error {
 		}
 		s.result.CompletedJobCount++
 		s.appendEvent(SimulationEvent{Tick: tick, Type: EventCompleted, JobName: job.Name})
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -278,8 +287,8 @@ func (s *simulationState) tryAdmit(ctx context.Context, tick int64, inputIndex i
 }
 
 func (s *simulationState) terminalizePending(ctx context.Context) error {
-	if len(s.pending) == 0 {
-		return nil
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if s.arrivalCursor != len(s.arrivalOrder) || s.running.Len() != 0 {
 		return fmt.Errorf("terminalize pending jobs while future or running work remains")
@@ -291,6 +300,9 @@ func (s *simulationState) terminalizePending(ctx context.Context) error {
 		if node.remaining != node.capacity {
 			return fmt.Errorf("terminal node %q has remaining %+v, want original capacity %+v", node.name, node.remaining, node.capacity)
 		}
+	}
+	if len(s.pending) == 0 {
+		return nil
 	}
 
 	switch s.policy {
