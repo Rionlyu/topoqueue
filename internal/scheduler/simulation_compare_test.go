@@ -3,10 +3,12 @@ package scheduler_test
 import (
 	"context"
 	"errors"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Rionlyu/topoqueue/internal/model"
 	"github.com/Rionlyu/topoqueue/internal/scheduler"
 )
 
@@ -58,6 +60,25 @@ func TestCompareSimulationsIsRepeatable(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("iteration %d differs:\ngot:  %#v\nwant: %#v", iteration, got, want)
+		}
+	}
+}
+
+func TestCompareSimulationsSelectsRuntimeErrorsDeterministically(t *testing.T) {
+	t.Parallel()
+
+	cluster := model.Cluster{Nodes: []model.Node{{
+		Name: "node-a", Capacity: model.Resources{GPU: 1},
+	}}}
+	jobs := model.TimedJobSet{Jobs: []model.TimedJob{
+		timedJob("overflow", math.MaxInt64, 1, 1, 0, 1, ""),
+	}}
+	const want = `compare simulation policy "backfill": simulate policy "backfill": tick 9223372036854775807 admit job "overflow": finish tick exceeds 9223372036854775807 for duration 1`
+
+	for iteration := 0; iteration < 1_000; iteration++ {
+		_, err := scheduler.CompareSimulations(context.Background(), cluster, jobs)
+		if err == nil || err.Error() != want {
+			t.Fatalf("iteration %d: CompareSimulations() error = %q, want %q", iteration, err, want)
 		}
 	}
 }

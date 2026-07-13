@@ -34,9 +34,6 @@ func CompareSimulations(ctx context.Context, cluster model.Cluster, jobs model.T
 		return nil, fmt.Errorf("compare simulations: validate topology requirements: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	policies := []Policy{PolicyStrictFIFO, PolicyBackfill}
 	outcomes := make(chan simulationComparisonOutcome, len(policies))
 	for _, policy := range policies {
@@ -53,9 +50,6 @@ func CompareSimulations(ctx context.Context, cluster model.Cluster, jobs model.T
 	for range policies {
 		outcome := <-outcomes
 		completed = append(completed, outcome)
-		if outcome.err != nil {
-			cancel()
-		}
 	}
 	sort.Slice(completed, func(i, j int) bool {
 		return completed[i].policy < completed[j].policy
