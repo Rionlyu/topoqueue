@@ -24,6 +24,20 @@ func BenchmarkScheduleThousandJobs(b *testing.B) {
 	}
 }
 
+func BenchmarkSimulateThousandTimedJobs(b *testing.B) {
+	cluster := benchmarkCluster(100)
+	jobs := benchmarkTimedJobs(1_000)
+	b.ResetTimer()
+
+	for iteration := 0; iteration < b.N; iteration++ {
+		result, err := scheduler.Simulate(context.Background(), cluster, jobs, scheduler.PolicyBackfill)
+		if err != nil {
+			b.Fatal(err)
+		}
+		runtime.KeepAlive(result)
+	}
+}
+
 func benchmarkCluster(nodeCount int) model.Cluster {
 	cluster := model.Cluster{Nodes: make([]model.Node, 0, nodeCount)}
 	for index := 0; index < nodeCount; index++ {
@@ -51,6 +65,27 @@ func benchmarkJobs(jobCount int) model.JobSet {
 			Replicas:            1 + index%12,
 			ResourcesPerReplica: model.Resources{CPU: int64(1 + index%4), GPU: 1},
 			RequiredTopology:    topology,
+		})
+	}
+	return jobs
+}
+
+func benchmarkTimedJobs(jobCount int) model.TimedJobSet {
+	jobs := model.TimedJobSet{Jobs: make([]model.TimedJob, 0, jobCount)}
+	for index := 0; index < jobCount; index++ {
+		topology := "rack"
+		if index%3 == 0 {
+			topology = ""
+		}
+		jobs.Jobs = append(jobs.Jobs, model.TimedJob{
+			Job: model.Job{
+				Name:                fmt.Sprintf("timed-job-%04d", index),
+				Replicas:            1 + index%12,
+				ResourcesPerReplica: model.Resources{CPU: int64(1 + index%4), GPU: 1},
+				RequiredTopology:    topology,
+			},
+			ArrivalTick:   int64(index / 10),
+			DurationTicks: int64(1 + index%10),
 		})
 	}
 	return jobs
