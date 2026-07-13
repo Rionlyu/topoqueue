@@ -1,4 +1,4 @@
-.PHONY: build test vet fmt-check demo benchmark
+.PHONY: build test vet fmt-check demo demo-simulate benchmark
 
 BINARY := bin/topoqueue
 
@@ -24,6 +24,13 @@ demo:
 	go run ./cmd/topoqueue compare \
 		--cluster examples/cluster.yaml \
 		--jobs examples/jobs.yaml \
+		--output text
+
+demo-simulate:
+	go run ./cmd/topoqueue simulate \
+		--cluster examples/cluster.yaml \
+		--jobs examples/timed-jobs.yaml \
+		--policy all \
 		--output text
 
 benchmark:

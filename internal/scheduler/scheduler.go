@@ -175,6 +175,7 @@ func Schedule(ctx context.Context, cluster model.Cluster, jobs model.JobSet, pol
 type nodeState struct {
 	name      string
 	topology  map[string]string
+	capacity  model.Resources
 	remaining model.Resources
 }
 
@@ -184,6 +185,7 @@ func makeNodeStates(cluster model.Cluster) []nodeState {
 		nodes[index] = nodeState{
 			name:      node.Name,
 			topology:  node.Topology,
+			capacity:  node.Capacity,
 			remaining: node.Capacity,
 		}
 	}

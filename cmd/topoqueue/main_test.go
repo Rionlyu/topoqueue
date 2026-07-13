@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Rionlyu/topoqueue/internal/model"
+	"github.com/Rionlyu/topoqueue/internal/output"
 	"github.com/Rionlyu/topoqueue/internal/scheduler"
 )
 
@@ -70,6 +72,32 @@ func TestRunExamples(t *testing.T) {
 			t.Errorf("unexpected ordered job decisions: %#v", got.Jobs)
 		}
 	})
+
+	t.Run("simulate example JSON", func(t *testing.T) {
+		t.Parallel()
+		timedJobsPath := filepath.Join("..", "..", "examples", "timed-jobs.yaml")
+		stdout, stderr, err := execute(t, []string{
+			"simulate", "--cluster", clusterPath, "--jobs", timedJobsPath,
+			"--policy", "all", "--output", "json",
+		})
+		if err != nil {
+			t.Fatalf("run() error = %v; stderr = %s", err, stderr)
+		}
+		var comparison output.SimulationComparisonJSON
+		if err := json.Unmarshal([]byte(stdout), &comparison); err != nil {
+			t.Fatalf("decode simulation comparison JSON: %v\n%s", err, stdout)
+		}
+		if len(comparison.Policies) != 2 {
+			t.Fatalf("policy count = %d, want 2", len(comparison.Policies))
+		}
+		backfill, strict := comparison.Policies[0], comparison.Policies[1]
+		if backfill.Policy != scheduler.PolicyBackfill || backfill.MakespanTicks != 12 || backfill.TotalQueueDelayTicks != 7 || backfill.MaximumQueueDelayTicks != 7 {
+			t.Errorf("backfill example summary = %#v", backfill)
+		}
+		if strict.Policy != scheduler.PolicyStrictFIFO || strict.MakespanTicks != 14 || strict.TotalQueueDelayTicks != 17 || strict.MaximumQueueDelayTicks != 10 {
+			t.Errorf("strict example summary = %#v", strict)
+		}
+	})
 }
 
 func TestRunRejectsInvalidArguments(t *testing.T) {
@@ -83,6 +111,8 @@ func TestRunRejectsInvalidArguments(t *testing.T) {
 		{name: "command required", args: nil, wantErr: "a command is required"},
 		{name: "schedule cluster required", args: []string{"schedule"}, wantErr: "--cluster is required"},
 		{name: "compare jobs required", args: []string{"compare", "--cluster", "cluster.yaml"}, wantErr: "--jobs is required"},
+		{name: "simulate cluster required", args: []string{"simulate"}, wantErr: "--cluster is required"},
+		{name: "simulate jobs required", args: []string{"simulate", "--cluster", "cluster.yaml"}, wantErr: "--jobs is required"},
 		{
 			name:    "unsupported policy",
 			args:    []string{"schedule", "--cluster", "cluster.yaml", "--jobs", "jobs.yaml", "--policy", "largest-first"},
@@ -97,6 +127,21 @@ func TestRunRejectsInvalidArguments(t *testing.T) {
 			name:    "unsupported compare output",
 			args:    []string{"compare", "--cluster", "cluster.yaml", "--jobs", "jobs.yaml", "--output", "yaml"},
 			wantErr: `unsupported output "yaml"`,
+		},
+		{
+			name:    "unsupported simulation policy",
+			args:    []string{"simulate", "--cluster", "cluster.yaml", "--jobs", "jobs.yaml", "--policy", "largest-first"},
+			wantErr: `unsupported policy "largest-first"`,
+		},
+		{
+			name:    "unsupported simulation output",
+			args:    []string{"simulate", "--cluster", "cluster.yaml", "--jobs", "jobs.yaml", "--output", "yaml"},
+			wantErr: `unsupported output "yaml"`,
+		},
+		{
+			name:    "simulation positional arguments",
+			args:    []string{"simulate", "workload", "--cluster", "cluster.yaml", "--jobs", "jobs.yaml"},
+			wantErr: "unexpected positional arguments",
 		},
 		{name: "unknown command", args: []string{"admit"}, wantErr: `unknown command "admit"`},
 	}
@@ -113,6 +158,154 @@ func TestRunRejectsInvalidArguments(t *testing.T) {
 				t.Errorf("run() error = %q, want containing %q", err, test.wantErr)
 			}
 		})
+	}
+}
+
+func TestRunSimulateModes(t *testing.T) {
+	t.Parallel()
+
+	clusterPath, _ := examplePaths()
+	timedJobsPath := writeCLIFile(t, "timed-jobs.yaml", canonicalTimedJobsYAML)
+
+	t.Run("default strict FIFO JSON", func(t *testing.T) {
+		stdout, stderr, err := execute(t, []string{
+			"simulate", "--cluster", clusterPath, "--jobs", timedJobsPath, "--output", "json",
+		})
+		if err != nil {
+			t.Fatalf("run() error = %v; stderr = %s", err, stderr)
+		}
+		var result scheduler.SimulationResult
+		if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+			t.Fatalf("decode simulation JSON: %v\n%s", err, stdout)
+		}
+		if result.Policy != scheduler.PolicyStrictFIFO || result.MakespanTicks != 14 || result.TotalQueueDelayTicks != 17 {
+			t.Errorf("strict simulation summary = %#v", result)
+		}
+	})
+
+	t.Run("explicit backfill text", func(t *testing.T) {
+		stdout, stderr, err := execute(t, []string{
+			"simulate", "--cluster", clusterPath, "--jobs", timedJobsPath,
+			"--policy", "backfill", "--output", "text",
+		})
+		if err != nil {
+			t.Fatalf("run() error = %v; stderr = %s", err, stderr)
+		}
+		for _, wanted := range []string{"backfill", "EVENT TIMELINE", "JOB LIFECYCLE", "2.33"} {
+			if !strings.Contains(stdout, wanted) {
+				t.Errorf("simulation text missing %q:\n%s", wanted, stdout)
+			}
+		}
+	})
+
+	t.Run("all policies JSON", func(t *testing.T) {
+		stdout, stderr, err := execute(t, []string{
+			"simulate", "--cluster", clusterPath, "--jobs", timedJobsPath,
+			"--policy", "all", "--output", "json",
+		})
+		if err != nil {
+			t.Fatalf("run() error = %v; stderr = %s", err, stderr)
+		}
+		var comparison output.SimulationComparisonJSON
+		if err := json.Unmarshal([]byte(stdout), &comparison); err != nil {
+			t.Fatalf("decode simulation comparison JSON: %v\n%s", err, stdout)
+		}
+		if len(comparison.Policies) != 2 || comparison.Policies[0].Policy != scheduler.PolicyBackfill || comparison.Policies[1].Policy != scheduler.PolicyStrictFIFO {
+			t.Errorf("comparison policies = %#v", comparison.Policies)
+		}
+	})
+
+	t.Run("all policies text", func(t *testing.T) {
+		stdout, stderr, err := execute(t, []string{
+			"simulate", "--cluster", clusterPath, "--jobs", timedJobsPath,
+			"--policy", "all", "--output", "text",
+		})
+		if err != nil {
+			t.Fatalf("run() error = %v; stderr = %s", err, stderr)
+		}
+		if strings.Count(stdout, "EVENT TIMELINE") != 2 || !strings.Contains(stdout, "2.33") || !strings.Contains(stdout, "5.67") {
+			t.Errorf("unexpected all-policy text:\n%s", stdout)
+		}
+	})
+}
+
+func TestRunSimulateHelpAndCancellation(t *testing.T) {
+	t.Parallel()
+
+	stdout, stderr, err := execute(t, []string{"help"})
+	if err != nil || stderr != "" || !strings.Contains(stdout, "simulate") {
+		t.Fatalf("root help = stdout %q, stderr %q, error %v", stdout, stderr, err)
+	}
+	stdout, stderr, err = execute(t, []string{"simulate", "-h"})
+	if err != nil || stdout != "" {
+		t.Fatalf("simulate help = stdout %q, stderr %q, error %v", stdout, stderr, err)
+	}
+	for _, flagName := range []string{"-cluster", "-jobs", "-policy", "-output"} {
+		if !strings.Contains(stderr, flagName) {
+			t.Errorf("simulate help missing %q:\n%s", flagName, stderr)
+		}
+	}
+
+	clusterPath, _ := examplePaths()
+	timedJobsPath := writeCLIFile(t, "timed-jobs.yaml", canonicalTimedJobsYAML)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var canceledStdout, canceledStderr bytes.Buffer
+	err = run(ctx, []string{"simulate", "--cluster", clusterPath, "--jobs", timedJobsPath}, &canceledStdout, &canceledStderr)
+	if err == nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled simulate error = %v, want context.Canceled", err)
+	}
+}
+
+func TestRunKeepsStaticAndTimedLoadersSeparate(t *testing.T) {
+	t.Parallel()
+
+	clusterPath, staticJobsPath := examplePaths()
+	timedJobsPath := writeCLIFile(t, "timed-jobs.yaml", canonicalTimedJobsYAML)
+	_, _, err := execute(t, []string{
+		"schedule", "--cluster", clusterPath, "--jobs", timedJobsPath,
+	})
+	if err == nil || !strings.Contains(err.Error(), "field arrivalTick not found") {
+		t.Fatalf("schedule timed workload error = %v", err)
+	}
+	_, _, err = execute(t, []string{
+		"simulate", "--cluster", clusterPath, "--jobs", staticJobsPath,
+	})
+	if err == nil || !strings.Contains(err.Error(), "arrivalTick is required") {
+		t.Fatalf("simulate static workload error = %v", err)
+	}
+	if _, err := scheduler.ParsePolicy("all"); err == nil {
+		t.Fatal("scheduler.ParsePolicy(all) error = nil, want all to remain CLI-only")
+	}
+}
+
+func TestRunSimulateReportsTimedTopologyContext(t *testing.T) {
+	t.Parallel()
+
+	clusterPath := writeCLIFile(t, "cluster.yaml", `nodes:
+  - name: node-a
+    topology:
+      zone: zone-a
+    capacity: {cpu: 1, gpu: 1}
+`)
+	jobsPath := writeCLIFile(t, "timed-jobs.yaml", `jobs:
+  - name: training
+    arrivalTick: 0
+    durationTicks: 1
+    replicas: 1
+    resourcesPerReplica: {cpu: 1, gpu: 1}
+    requiredTopology: rack
+`)
+	_, _, err := execute(t, []string{
+		"simulate", "--cluster", clusterPath, "--jobs", jobsPath,
+	})
+	if err == nil {
+		t.Fatal("run() error = nil, want missing timed topology error")
+	}
+	for _, wanted := range []string{clusterPath, jobsPath, `missing topology key "rack"`, `job "training"`} {
+		if !strings.Contains(err.Error(), wanted) {
+			t.Errorf("run() error = %q, want containing %q", err, wanted)
+		}
 	}
 }
 
@@ -170,3 +363,33 @@ func readREADMEExample(t *testing.T) string {
 	}
 	return string(contents[start:start+end]) + "\n"
 }
+
+func writeCLIFile(t *testing.T, name, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write CLI fixture: %v", err)
+	}
+	return path
+}
+
+const canonicalTimedJobsYAML = `jobs:
+  - name: warmup
+    arrivalTick: 0
+    durationTicks: 8
+    replicas: 8
+    resourcesPerReplica: {cpu: 4, gpu: 1}
+    requiredTopology: zone
+  - name: train-xl
+    arrivalTick: 1
+    durationTicks: 4
+    replicas: 16
+    resourcesPerReplica: {cpu: 4, gpu: 1}
+    requiredTopology: zone
+  - name: batch
+    arrivalTick: 2
+    durationTicks: 2
+    replicas: 4
+    resourcesPerReplica: {cpu: 4, gpu: 1}
+    requiredTopology: rack
+`

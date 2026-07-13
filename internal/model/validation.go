@@ -72,6 +72,25 @@ func ValidateJobs(jobSet JobSet) error {
 	return nil
 }
 
+// ValidateTimedJobs checks the static job fields and lifecycle timing in input
+// order. Required-field presence is enforced by LoadTimedJobs because zero is
+// a valid arrival tick in the public value model.
+func ValidateTimedJobs(jobSet TimedJobSet) error {
+	if err := ValidateJobs(jobSet.StaticJobs()); err != nil {
+		return err
+	}
+
+	for _, job := range jobSet.Jobs {
+		if job.ArrivalTick < 0 {
+			return fmt.Errorf("job %q: arrivalTick must be non-negative, got %d", job.Name, job.ArrivalTick)
+		}
+		if job.DurationTicks <= 0 {
+			return fmt.Errorf("job %q: durationTicks must be greater than zero, got %d", job.Name, job.DurationTicks)
+		}
+	}
+	return nil
+}
+
 // ValidateTopologyRequirements verifies that every node has every topology key
 // required by the jobs.
 func ValidateTopologyRequirements(cluster Cluster, jobSet JobSet) error {

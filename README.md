@@ -5,7 +5,7 @@
 TopoQueue is a deterministic Go CLI for exploring how queue policy and
 topology constraints affect accelerator-job admission.
 
-> TopoQueue is an educational snapshot simulator. It is not a Kubernetes
+> TopoQueue is an educational scheduling simulator. It is not a Kubernetes
 > scheduler and does not implement Kueue semantics.
 
 ## Features
@@ -18,6 +18,8 @@ topology constraints affect accelerator-job admission.
 - Human-readable text and stable, indented JSON output.
 - Concurrent comparison of policies with isolated mutable scheduling state.
 - Strict YAML decoding that rejects unknown fields.
+- Discrete-event workload simulation with logical arrivals, fixed durations,
+  completion-driven resource release, and terminal lifecycle results.
 
 ## Installation
 
@@ -64,6 +66,16 @@ go run ./cmd/topoqueue schedule \
   --output json
 ```
 
+Simulate both policies over the checked-in timed workload:
+
+```sh
+./bin/topoqueue simulate \
+  --cluster examples/cluster.yaml \
+  --jobs examples/timed-jobs.yaml \
+  --policy all \
+  --output text
+```
+
 ## Example comparison
 
 This is the output of `make demo` using the checked-in example files:
@@ -88,6 +100,26 @@ batch     pending   -       -           0/16   0/4   head_of_line_blocked: head_
 
 The `CPU` and `GPU` columns in job decisions show allocated/requested units.
 
+## Event-driven simulation
+
+The `simulate` command uses a separate timed-jobs schema with required
+`arrivalTick` and `durationTicks` fields. It advances directly between logical
+event ticks; it does not sleep or use wall-clock time. At each tick it completes
+and releases all finishing jobs, enqueues all arrivals, and then runs one
+admission cycle.
+
+The checked-in example demonstrates the difference over time:
+
+| Policy | Completed | Unscheduled | Makespan | Total wait | Average wait | Maximum wait |
+|---|---:|---:|---:|---:|---:|---:|
+| backfill | 3 | 0 | 12 | 7 | 2.33 | 7 |
+| strict-fifo | 3 | 0 | 14 | 17 | 5.67 | 10 |
+
+Backfill starts `batch` at tick 2 while `train-xl` waits for the whole cluster.
+Strict FIFO retains `train-xl` at the queue head, so `batch` starts only after
+`train-xl` completes. See [Event-driven simulation](docs/event-driven-simulation.md)
+for the input contract, event ordering, lifecycle fields, and metric definitions.
+
 ## Algorithm
 
 Jobs are considered in YAML order. For each attempted job, TopoQueue computes
@@ -106,6 +138,13 @@ head-of-line blocked. Backfill records an unplaceable job and continues trying
 later jobs. A comparison runs both simulations concurrently, but each policy
 run is single-threaded and owns its scheduling state.
 
+Timed simulation reuses the same placement algorithm. Arrivals are ordered by
+logical tick and input position, and running jobs are ordered by completion tick
+and input position. Completion releases the exact recorded per-node allocation.
+Pending work is retried only at arrival and completion ticks. When neither can
+occur again, remaining jobs become terminally unscheduled with final placement
+reasons.
+
 ## Complexity
 
 Let `N` be the number of nodes, `D` the number of topology domains, and `J` the
@@ -114,17 +153,21 @@ sorting nodes and domain candidates, for a worst-case bound of
 `O(N log N + D log D)` time and `O(N + D)` temporary space. A full backfill run
 is `O(J * (N log N + D log D))`; strict FIFO may stop before all `J` jobs.
 Policy comparison performs two independent runs with the same per-run bounds.
+For a timed workload, heap operations add `O(log J)` per admission/completion.
+One admission cycle may inspect every pending job, and up to `O(J)` event ticks
+can retry pending work, so the deliberately simple worst case is
+`O(J^2 * (N log N + D log D) + J log J)` time and `O(N + D + J)` state.
 
 ## Limitations
 
-- The input is a static snapshot; there is no API server, watch loop, or
-  cluster controller.
+- Cluster capacity is still an input snapshot; there is no API server, watch
+  loop, or cluster controller.
 - Resources are whole, non-negative CPU and GPU units; cluster and per-job
   totals must fit in a signed 64-bit integer.
 - Replicas are identical, cannot be split across nodes, and support at most one
   required topology key per job.
-- There is no preemption, priority, fairness, retry, reservation, or job
-  lifecycle model.
+- Timed jobs have fixed successful durations. There are no failures, failure
+  retries, preemption, priorities, fairness, reservations, or elastic jobs.
 - TopoQueue does not implement Kubernetes scheduling behavior or exact Kueue
   semantics.
 - The simulator is educational and is not intended for production scheduling.
@@ -137,6 +180,7 @@ make vet
 make test
 make build
 make demo
+make demo-simulate
 make benchmark
 ```
 
@@ -149,6 +193,7 @@ internal/scheduler/   policies, placement, comparison, tests, and benchmark
 internal/output/      deterministic text and JSON renderers
 examples/             example cluster and ordered jobs
 docs/design.md        design decisions and deliberate non-goals
+docs/event-driven-simulation.md  timed input, lifecycle, and metric semantics
 .github/workflows/    formatting, vet, race-test, and build CI
 ```
 
